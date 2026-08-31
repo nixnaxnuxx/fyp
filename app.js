@@ -11,7 +11,8 @@
   const fmt = d => d ? new Date(d).toLocaleString([], {dateStyle:'medium', timeStyle:'short'}) : '—';
   const dateOnly = d => d ? new Date(d).toLocaleDateString([], {dateStyle:'medium'}) : '—';
   const now = () => new Date();
-  const isSupervisor = () => state.profile?.role === 'supervisor';
+  const isAdmin = () => ['admin','supervisor'].includes(state.profile?.role);
+  const roleLabel = () => isAdmin() ? 'Admin' : 'Student';
   const q = sel => document.querySelector(sel);
 
   async function init(){
@@ -43,7 +44,7 @@
     ];
     const [coh,stu,pro,tas,ass,sub,fee,slots,books] = await Promise.all(fetches);
     state.cohorts=coh.data||[]; state.students=stu.data||[]; state.projects=pro.data||[]; state.tasks=tas.data||[]; state.assignments=ass.data||[]; state.submissions=sub.data||[]; state.feedback=fee.data||[]; state.meetingSlots=slots.data||[]; state.meetingBookings=books.data||[];
-    if(!isSupervisor()) state.studentRecord = state.students.find(s=>s.profile_id===state.user.id || (s.email||'').toLowerCase()===(state.user.email||'').toLowerCase()) || null;
+    if(!isAdmin()) state.studentRecord = state.students.find(s=>s.profile_id===state.user.id || (s.email||'').toLowerCase()===(state.user.email||'').toLowerCase()) || null;
   }
 
   function renderAuth(){
@@ -52,23 +53,24 @@
     q('#tabLogin').onclick=()=>{mode='login'; q('#tabLogin').className='btn'; q('#tabSignup').className='btn secondary'; q('.signup-only').style.display='none'; q('#authSubmit').textContent='Sign in';};
     q('#tabSignup').onclick=()=>{mode='signup'; q('#tabSignup').className='btn'; q('#tabLogin').className='btn secondary'; q('.signup-only').style.display='flex'; q('#authSubmit').textContent='Create account';};
     q('#authForm').onsubmit=async e=>{e.preventDefault(); const email=q('#email').value.trim(),password=q('#password').value,full_name=q('#fullName').value.trim(); q('#authSubmit').disabled=true; q('#authMsg').textContent='Working…';
-      const r = mode==='login' ? await sb.auth.signInWithPassword({email,password}) : await sb.auth.signUp({email,password,options:{data:{full_name}}});
+      const redirectTo = window.location.origin + window.location.pathname;
+      const r = mode==='login' ? await sb.auth.signInWithPassword({email,password}) : await sb.auth.signUp({email,password,options:{data:{full_name},emailRedirectTo:redirectTo}});
       q('#authSubmit').disabled=false; if(r.error){q('#authMsg').textContent=r.error.message;return;} if(mode==='signup' && !r.data.session){q('#authMsg').textContent='Account created. Check your email to confirm, then sign in.';return;} await init();
     };
   }
 
   function nav(){
-    const items = isSupervisor() ? [['dashboard','Dashboard'],['students','Students'],['tasks','Tasks'],['meetings','Meetings'],['submissions','Submissions'],['progress','Progress'],['cohorts','Cohorts'],['export','Export']] : [['dashboard','My FYP'],['tasks','My Tasks'],['meetings','Book Meeting'],['submissions','My Submissions'],['progress','Progress'],['export','Export Record']];
+    const items = isAdmin() ? [['dashboard','Dashboard'],['students','Students'],['tasks','Tasks'],['meetings','Meetings'],['submissions','Submissions'],['progress','Progress'],['cohorts','Cohorts'],['export','Export']] : [['dashboard','My FYP'],['tasks','My Tasks'],['meetings','Book Meeting'],['submissions','My Submissions'],['progress','Progress'],['export','Export Record']];
     return `<div class="nav">${items.map(([v,l])=>`<button data-view="${v}" class="${state.view===v?'active':''}">${l}</button>`).join('')}</div>`;
   }
   function render(){
-    app.innerHTML = `<div class="shell"><aside class="sidebar"><div class="brand">FYP Portal<small>Supervision Management System</small></div>${nav()}<div class="account"><div>${esc(state.profile?.full_name||state.user.email)}</div><div class="tiny">${esc(state.profile?.role||'student')}</div><button id="signout" class="btn secondary small" style="margin-top:10px">Sign out</button></div></aside><main class="main"><div id="view"></div></main></div>`;
+    app.innerHTML = `<div class="shell"><aside class="sidebar"><div class="brand">FYP Portal<small>Supervision Management System</small></div>${nav()}<div class="account"><div>${esc(state.profile?.full_name||state.user.email)}</div><div class="tiny">${esc(roleLabel())}</div><button id="signout" class="btn secondary small" style="margin-top:10px">Sign out</button></div></aside><main class="main"><div id="view"></div></main></div>`;
     document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{state.view=b.dataset.view;render();});
     q('#signout').onclick=async()=>{await sb.auth.signOut();state.user=null;renderAuth();};
     const target=q('#view');
-    if(state.view==='dashboard') target.innerHTML=isSupervisor()?supervisorDashboard():studentDashboard();
+    if(state.view==='dashboard') target.innerHTML=isAdmin()?supervisorDashboard():studentDashboard();
     if(state.view==='students') target.innerHTML=studentsView();
-    if(state.view==='tasks') target.innerHTML=isSupervisor()?tasksSupervisor():tasksStudent();
+    if(state.view==='tasks') target.innerHTML=isAdmin()?tasksSupervisor():tasksStudent();
     if(state.view==='meetings') target.innerHTML=meetingsView();
     if(state.view==='submissions') target.innerHTML=submissionsView();
     if(state.view==='progress') target.innerHTML=progressView();
@@ -86,7 +88,7 @@
   function supervisorDashboard(){
     const currentCohort=state.cohorts[0];
     let overdue=0,pendingReview=0,approved=0; state.assignments.forEach(a=>{const t=state.tasks.find(x=>x.id===a.task_id); if(!t)return; const s=latestSubmission(t.id,a.student_id); if(!s&&t.due_at&&new Date(t.due_at)<now())overdue++; if(s&&['submitted','resubmitted'].includes(s.status))pendingReview++; if(s?.status==='approved')approved++;});
-    return top('FYP Supervision Dashboard',currentCohort?`Current cohort: ${esc(currentCohort.label)}`:'Create your first academic year to begin.',`<button class="btn" id="newTask">+ New Task</button>`)+
+    return top('FYP Admin Dashboard',currentCohort?`Current cohort: ${esc(currentCohort.label)}`:'Create your first academic year to begin.',`<button class="btn" id="newTask">+ New Task</button>`)+
       `<div class="grid cols-4"><div class="card kpi"><div class="label">Students</div><div class="value">${state.students.length}</div><div class="hint">Across visible cohorts</div></div><div class="card kpi"><div class="label">Pending review</div><div class="value">${pendingReview}</div><div class="hint">Submitted work awaiting you</div></div><div class="card kpi"><div class="label">Overdue</div><div class="value">${overdue}</div><div class="hint">No submission after deadline</div></div><div class="card kpi"><div class="label">Approved</div><div class="value">${approved}</div><div class="hint">Approved task submissions</div></div></div>`+
       `<div class="section-title"><h2>Student overview</h2><button class="btn secondary small" id="newStudent">+ Add Student</button></div>`+
       studentOverviewTable();
@@ -98,7 +100,7 @@
   }
 
   function studentDashboard(){
-    const s=state.studentRecord;if(!s)return top('My FYP','Your account is not linked to a student record yet.')+`<div class="notice bad">Ask your supervisor to add your exact sign-in email to the student list.</div>`;
+    const s=state.studentRecord;if(!s)return top('My FYP','Your account is not linked to a student record yet.')+`<div class="notice bad">Ask your FYP administrator to add your exact sign-in email to the student list.</div>`;
     const p=projectForStudent(s.id), assigns=state.assignments.filter(a=>a.student_id===s.id).map(a=>state.tasks.find(t=>t.id===a.task_id)).filter(Boolean).sort((a,b)=>new Date(a.due_at)-new Date(b.due_at));
     const pending=assigns.filter(t=>!latestSubmission(t.id,s.id));const next=pending[0];const approved=assigns.filter(t=>latestSubmission(t.id,s.id)?.status==='approved').length;const pct=assigns.length?Math.round(approved/assigns.length*100):0;
     return top('My FYP',esc(p?.title||'FYP project'))+`<div class="grid cols-3"><div class="card kpi"><div class="label">Overall approved</div><div class="value">${pct}%</div></div><div class="card kpi"><div class="label">Tasks approved</div><div class="value">${approved}/${assigns.length}</div></div><div class="card kpi"><div class="label">Next deadline</div><div class="value" style="font-size:20px">${next?dateOnly(next.due_at):'None'}</div></div></div>`+
@@ -120,7 +122,7 @@
   function meetingStatus(slot){const b=bookingForSlot(slot.id);if(b)return ['Booked','ok'];if(new Date(slot.end_at)<now())return ['Past',''];return ['Available','accent'];}
 
   function meetingsView(){
-    if(isSupervisor()){
+    if(isAdmin()){
       const rows=state.meetingSlots.map(slot=>{const b=bookingForSlot(slot.id),stu=b?state.students.find(s=>s.id===b.student_id):null,[lab,cl]=meetingStatus(slot);return `<tr><td>${fmt(slot.start_at)}</td><td>${fmt(slot.end_at)}</td><td>${esc(slot.location||'')}</td><td><span class="pill ${cl}">${lab}</span></td><td>${b?`${esc(stu?.full_name||'')}<div class="tiny muted">${esc(projectForStudent(stu?.id)?.title||'')}</div>`:'—'}</td></tr>`}).join('');
       return top('FYP Supervision Meetings','Set your own availability here. Students can book one available slot; no calendar connection is used.',`<div class="top-actions"><button class="btn secondary" id="emailStudents">Email All Students</button><button class="btn" id="newMeetingSlot">+ Add Availability</button></div>`)+
       `<div class="card"><h3 style="margin-top:0">Student & project list</h3>${studentProjectList()}</div><div class="section-title"><h2>Availability & bookings</h2></div><div class="table-wrap"><table class="table"><thead><tr><th>Start</th><th>End</th><th>Location / Mode</th><th>Status</th><th>Booked by</th></tr></thead><tbody>${rows||'<tr><td colspan="5" class="muted">No availability slots yet. Add the times you are free this week.</td></tr>'}</tbody></table></div>`;
@@ -159,20 +161,20 @@
   }
 
   function submissionsView(){
-    const subs=isSupervisor()?state.submissions:state.submissions.filter(s=>s.student_id===state.studentRecord?.id);
-    return top(isSupervisor()?'Submissions':'My Submissions',isSupervisor()?'Review evidence, request revisions, and approve completed work.':'Your submission history stays as part of your FYP evidence record.')+
+    const subs=isAdmin()?state.submissions:state.submissions.filter(s=>s.student_id===state.studentRecord?.id);
+    return top(isAdmin()?'Submissions':'My Submissions',isAdmin()?'Review evidence, request revisions, and approve completed work.':'Your submission history stays as part of your FYP evidence record.')+
       `<div class="table-wrap"><table class="table"><thead><tr><th>Student</th><th>Task</th><th>Submitted</th><th>Status</th><th>Summary</th><th></th></tr></thead><tbody>${subs.map(s=>{const stu=state.students.find(x=>x.id===s.student_id),t=state.tasks.find(x=>x.id===s.task_id);return `<tr><td>${esc(stu?.full_name||'')}</td><td>${esc(t?.title||'')}</td><td>${fmt(s.submitted_at)}</td><td><span class="pill ${s.status==='approved'?'ok':s.status==='revision_required'?'warn':''}">${esc(s.status)}</span></td><td>${esc((s.summary||'').slice(0,120))}</td><td><button class="btn secondary small openSubmission" data-id="${s.id}">Open</button></td></tr>`}).join('')||'<tr><td colspan="6" class="muted">No submissions yet.</td></tr>'}</tbody></table></div>`;
   }
 
   function progressView(){
-    const students=isSupervisor()?state.students:(state.studentRecord?[state.studentRecord]:[]);
+    const students=isAdmin()?state.students:(state.studentRecord?[state.studentRecord]:[]);
     return top('Progress','Approved tasks count toward progress; overdue tasks are highlighted automatically.')+`<div class="grid cols-2">${students.map(s=>{const assigns=state.assignments.filter(a=>a.student_id===s.id), approved=assigns.filter(a=>latestSubmission(a.task_id,s.id)?.status==='approved').length,pct=assigns.length?Math.round(approved/assigns.length*100):0;const rows=assigns.map(a=>{const t=state.tasks.find(x=>x.id===a.task_id);if(!t)return'';const [lab,cl]=assignmentStatus(t,s.id);return `<div class="log-entry"><strong>${esc(t.title)}</strong><span class="pill ${cl}">${lab}</span> <span class="tiny muted">Due ${fmt(t.due_at)}</span></div>`}).join('');return `<div class="card"><h2 style="margin-top:0">${esc(s.full_name)}</h2><div class="progress"><span style="width:${pct}%"></span></div><p class="muted">${pct}% approved (${approved}/${assigns.length})</p>${rows||'<div class="muted">No tasks yet.</div>'}</div>`}).join('')||'<div class="empty">No student data.</div>'}</div>`;
   }
 
   function cohortsView(){return top('Academic Years','Keep FYP cohorts separate so future students can be added without mixing records.',`<button class="btn" id="newCohort">+ New Cohort</button>`)+`<div class="grid cols-3">${state.cohorts.map(c=>`<div class="card"><h3>${esc(c.label)}</h3><p class="muted">${c.is_active?'Active cohort':'Archived / inactive'}</p><span class="pill ${c.is_active?'ok':''}">${c.is_active?'Active':'Inactive'}</span></div>`).join('')||'<div class="empty">No cohorts yet.</div>'}</div>`;}
 
   function exportView(){
-    const students=isSupervisor()?state.students:(state.studentRecord?[state.studentRecord]:[]);
+    const students=isAdmin()?state.students:(state.studentRecord?[state.studentRecord]:[]);
     return top('Export FYP Record','Generate a print/PDF-ready supervision record or CSV task history.')+`<div class="card"><div class="form-grid"><div class="field"><label>Student</label><select id="exportStudent">${students.map(s=>`<option value="${s.id}">${esc(s.full_name)}</option>`).join('')}</select></div><div class="field"><label>Export type</label><select id="exportType"><option value="print">Supervision Record (Print / Save PDF)</option><option value="csv">Task & Submission History (CSV)</option></select></div></div><div class="actions"><button class="btn" id="doExport">Generate Export</button></div></div><div id="exportPreview" style="margin-top:18px"></div>`;
   }
 
@@ -200,7 +202,7 @@
       m.remove();await loadData();render();};}
 
   async function openSubmissionModal(id){const s=state.submissions.find(x=>x.id===id),t=state.tasks.find(x=>x.id===s.task_id),stu=state.students.find(x=>x.id===s.student_id);const {data:files}=await sb.from('submission_files').select('*').eq('submission_id',id).order('uploaded_at');const feedback=state.feedback.filter(f=>f.submission_id===id);let fileHtml='';for(const f of files||[]){const {data}=await sb.storage.from(cfg.evidenceBucket||'fyp-evidence').createSignedUrl(f.storage_path,3600);fileHtml+=`<div class="file-row"><span>${esc(f.file_name)}</span>${data?.signedUrl?`<a href="${data.signedUrl}" target="_blank" rel="noopener">Open</a>`:''}</div>`;}
-    const m=modal(`<h2>${esc(t?.title||'Submission')}</h2><div class="notice"><b>${esc(stu?.full_name||'')}</b> · Submitted ${fmt(s.submitted_at)} · Revision ${s.revision_no||1}</div><div class="grid cols-2" style="margin-top:14px"><div class="card"><b>Work completed</b><p>${esc(s.summary||'—')}</p></div><div class="card"><b>Results / findings</b><p>${esc(s.results||'—')}</p></div><div class="card"><b>Interpretation</b><p>${esc(s.interpretation||'—')}</p></div><div class="card"><b>Problems / next action</b><p>${esc(s.problems||'—')}<br>${esc(s.next_action||'')}</p></div></div><h3>Evidence</h3>${fileHtml||'<div class="muted">No uploaded files.</div>'}${s.external_link?`<p><a href="${esc(s.external_link)}" target="_blank" rel="noopener">External evidence link</a></p>`:''}<h3>Feedback history</h3>${feedback.map(f=>`<div class="log-entry"><strong>${esc(f.decision)}</strong><div>${esc(f.comment||'')}</div><span class="tiny muted">${fmt(f.created_at)}</span></div>`).join('')||'<div class="muted">No feedback yet.</div>'}${isSupervisor()?`<form id="reviewForm" class="form-grid" style="margin-top:18px"><div class="field"><label>Decision</label><select id="decision"><option value="approved">Approve</option><option value="revision_required">Revision Required</option><option value="incomplete">Incomplete</option></select></div><div class="field"><label>Revision due (optional)</label><input id="revDue" type="datetime-local"></div><div class="field full"><label>Supervisor feedback</label><textarea id="comment" required></textarea></div><div class="actions field full">${closeBtn()}<button class="btn">Save Review</button></div></form>`:`<div class="actions">${closeBtn()}</div>`}`);
+    const m=modal(`<h2>${esc(t?.title||'Submission')}</h2><div class="notice"><b>${esc(stu?.full_name||'')}</b> · Submitted ${fmt(s.submitted_at)} · Revision ${s.revision_no||1}</div><div class="grid cols-2" style="margin-top:14px"><div class="card"><b>Work completed</b><p>${esc(s.summary||'—')}</p></div><div class="card"><b>Results / findings</b><p>${esc(s.results||'—')}</p></div><div class="card"><b>Interpretation</b><p>${esc(s.interpretation||'—')}</p></div><div class="card"><b>Problems / next action</b><p>${esc(s.problems||'—')}<br>${esc(s.next_action||'')}</p></div></div><h3>Evidence</h3>${fileHtml||'<div class="muted">No uploaded files.</div>'}${s.external_link?`<p><a href="${esc(s.external_link)}" target="_blank" rel="noopener">External evidence link</a></p>`:''}<h3>Feedback history</h3>${feedback.map(f=>`<div class="log-entry"><strong>${esc(f.decision)}</strong><div>${esc(f.comment||'')}</div><span class="tiny muted">${fmt(f.created_at)}</span></div>`).join('')||'<div class="muted">No feedback yet.</div>'}${isAdmin()?`<form id="reviewForm" class="form-grid" style="margin-top:18px"><div class="field"><label>Decision</label><select id="decision"><option value="approved">Approve</option><option value="revision_required">Revision Required</option><option value="incomplete">Incomplete</option></select></div><div class="field"><label>Revision due (optional)</label><input id="revDue" type="datetime-local"></div><div class="field full"><label>Admin feedback</label><textarea id="comment" required></textarea></div><div class="actions field full">${closeBtn()}<button class="btn">Save Review</button></div></form>`:`<div class="actions">${closeBtn()}</div>`}`);
     m.querySelector('[data-close]').onclick=()=>m.remove();const rf=m.querySelector('#reviewForm');if(rf)rf.onsubmit=async e=>{e.preventDefault();const decision=m.querySelector('#decision').value,comment=m.querySelector('#comment').value.trim(),revision_due_at=m.querySelector('#revDue').value||null;const r=await sb.from('feedback').insert({submission_id:id,supervisor_id:state.user.id,decision,comment,revision_due_at});if(r.error)return alert(r.error.message);const u=await sb.from('submissions').update({status:decision}).eq('id',id);if(u.error)return alert(u.error.message);m.remove();await loadData();render();};
   }
 

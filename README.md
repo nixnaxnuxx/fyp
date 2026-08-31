@@ -132,3 +132,4 @@ Supervisor workflow:
 6. Meeting bookings are included in the exported FYP Supervision Record.
 
 If you installed an earlier version of the portal, run `supabase_meetings_migration.sql` once in the Supabase SQL Editor before deploying this update.
+\n\n## v3 Admin / Student access\n\n- New public accounts are always created as `student`.\n- The administrator account must be promoted once in Supabase using `supabase_admin_migration.sql`.\n- The browser app displays the administrator role as **Admin**.\n- For email-confirmation deployments, set Supabase Authentication > URL Configuration > Site URL to your exact GitHub Pages portal URL, including the repository path, e.g. `https://USERNAME.github.io/REPOSITORY/`.\n- Add the same URL under Redirect URLs. The app also explicitly passes the current portal page as the email confirmation redirect.\n

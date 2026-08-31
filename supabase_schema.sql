@@ -6,7 +6,7 @@ create extension if not exists pgcrypto;
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   full_name text,
-  role text not null default 'student' check (role in ('supervisor','student')),
+  role text not null default 'student' check (role in ('admin','student')),
   created_at timestamptz not null default now()
 );
 
@@ -128,7 +128,7 @@ for each row execute procedure public.handle_new_user();
 
 create or replace function public.is_supervisor()
 returns boolean language sql stable security definer set search_path=public as $$
-  select exists(select 1 from public.profiles p where p.id=auth.uid() and p.role='supervisor');
+  select exists(select 1 from public.profiles p where p.id=auth.uid() and p.role='admin');
 $$;
 
 create or replace function public.current_student_id()
@@ -199,7 +199,7 @@ create policy "evidence delete own folder or supervisor" on storage.objects for 
 );
 
 -- IMPORTANT: After you create YOUR account, promote it once in SQL Editor:
--- update public.profiles set role='supervisor' where id=(select id from auth.users where email='YOUR_EMAIL');
+-- update public.profiles set role='admin' where id=(select id from auth.users where email='YOUR_EMAIL');
 
 
 -- Meeting booking feature
