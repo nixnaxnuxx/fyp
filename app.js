@@ -9,8 +9,10 @@
   const sb = window.supabase.createClient(cleanSupabaseUrl, cfg.supabaseAnonKey);
   const state = { user:null, profile:null, view:'dashboard', cohorts:[], students:[], projects:[], tasks:[], assignments:[], submissions:[], feedback:[], meetingSlots:[], meetingBookings:[], meetingRecords:[], meetingFollowups:[], files:[], studentRecord:null };
   const esc = s => String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
-  const fmt = d => d ? new Date(d).toLocaleString([], {dateStyle:'medium', timeStyle:'short'}) : '—';
-  const dateOnly = d => d ? new Date(d).toLocaleDateString([], {dateStyle:'medium'}) : '—';
+  const BRUNEI_TZ = 'Asia/Brunei';
+  const fmt = d => d ? new Intl.DateTimeFormat('en-BN', {timeZone:BRUNEI_TZ,dateStyle:'medium',timeStyle:'short'}).format(new Date(d)) : '—';
+  const dateOnly = d => d ? new Intl.DateTimeFormat('en-BN', {timeZone:BRUNEI_TZ,dateStyle:'medium'}).format(new Date(d)) : '—';
+  const timeOnly = d => d ? new Intl.DateTimeFormat('en-BN', {timeZone:BRUNEI_TZ,hour:'numeric',minute:'2-digit',hour12:true}).format(new Date(d)) : '—';
   const now = () => new Date();
   const isAdmin = () => ['admin','supervisor'].includes(state.profile?.role);
   const roleLabel = () => isAdmin() ? 'Admin' : 'Student';
@@ -67,7 +69,7 @@
     return `<div class="nav">${items.map(([v,l])=>`<button data-view="${v}" class="${state.view===v?'active':''}">${l}</button>`).join('')}</div>`;
   }
   function render(){
-    app.innerHTML = `<div class="shell"><aside class="sidebar"><div class="brand">FYP Portal<small>Supervision Management System</small></div>${nav()}<div class="account"><div>${esc(state.profile?.full_name||state.user.email)}</div><div class="tiny">${esc(roleLabel())}</div><div class="version-badge">Portal v6.4</div><button id="signout" class="btn secondary small" style="margin-top:10px">Sign out</button></div></aside><main class="main"><div id="view"></div></main></div>`;
+    app.innerHTML = `<div class="shell"><aside class="sidebar"><div class="brand">FYP Portal<small>Supervision Management System</small></div>${nav()}<div class="account"><div>${esc(state.profile?.full_name||state.user.email)}</div><div class="tiny">${esc(roleLabel())}</div><div class="version-badge">Portal v6.5</div><button id="signout" class="btn secondary small" style="margin-top:10px">Sign out</button></div></aside><main class="main"><div id="view"></div></main></div>`;
     document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{state.view=b.dataset.view;render();});
     q('#signout').onclick=async()=>{await sb.auth.signOut();state.user=null;renderAuth();};
     const target=q('#view');
@@ -142,7 +144,7 @@
     return top('Book Supervision Meeting','Choose one available slot and keep track of the actions agreed during supervision.')+
       `${myBooking?(()=>{const sl=state.meetingSlots.find(s=>s.id===myBooking.slot_id);return `<div class="notice ok"><b>Your upcoming meeting is booked:</b> ${fmt(sl?.start_at)} – ${fmt(sl?.end_at)}${sl?.location?` · ${esc(sl.location)}`:''}</div>`})():''}`+
       `${followups.length?`<div class="section-title"><h2>Before your next meeting</h2></div><div class="followup-list">${followups.map(f=>`<div class="followup-item"><div><strong>${esc(f.title)}</strong>${f.details?`<div class="muted">${esc(f.details)}</div>`:''}<div class="tiny muted">${f.due_at?`Due ${fmt(f.due_at)}`:'No due date set'}</div></div><span class="pill warn">${esc(f.status)}</span></div>`).join('')}</div>`:''}`+
-      `<div class="section-title"><h2>Available slots</h2></div><div class="grid cols-2">${available.map(slot=>`<div class="card"><h3>${dateOnly(slot.start_at)}</h3><p><b>${new Date(slot.start_at).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})} – ${new Date(slot.end_at).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}</b></p><p class="muted">${esc(slot.location||'FYP supervision meeting')}</p><button class="btn bookMeeting" data-slot="${slot.id}">Book this slot</button></div>`).join('')||'<div class="empty">No available meeting slots at the moment.</div>'}</div>`+
+      `<div class="section-title"><h2>Available slots</h2></div><div class="grid cols-2">${available.map(slot=>`<div class="card"><h3>${dateOnly(slot.start_at)}</h3><p><b>${timeOnly(slot.start_at)} – ${timeOnly(slot.end_at)}</b></p><p class="muted">${esc(slot.location||'FYP supervision meeting')}</p><button class="btn bookMeeting" data-slot="${slot.id}">Book this slot</button></div>`).join('')||'<div class="empty">No available meeting slots at the moment.</div>'}</div>`+
       `${recentRecords.length?`<div class="section-title"><h2>Recent supervision notes</h2></div>${recentRecords.map(x=>`<div class="card meeting-note-card"><div class="tiny muted">${fmt(x.slot?.start_at)}</div><h3>${esc(x.rec.summary||'Supervision meeting')}</h3>${x.rec.comments?`<p><b>Supervisor comments:</b> ${esc(x.rec.comments)}</p>`:''}${x.rec.decisions?`<p><b>Decisions:</b> ${esc(x.rec.decisions)}</p>`:''}</div>`).join('')}`:''}`;
   }
 
@@ -199,7 +201,7 @@
     const portalUrl=location.href.split('#')[0];
     const projectLines=students.map(s=>`- ${s.full_name}: ${projectForStudent(s.id)?.title||'FYP project'}`).join('\n');
     const available=state.meetingSlots.filter(sl=>!bookingForSlot(sl.id)&&new Date(sl.start_at)>now()).slice(0,12);
-    const slotLines=available.length?available.map(sl=>`- ${fmt(sl.start_at)} to ${new Date(sl.end_at).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}${sl.location?` (${sl.location})`:''}`).join('\n'):'Please check the portal for the latest available slots.';
+    const slotLines=available.length?available.map(sl=>`- ${fmt(sl.start_at)} to ${timeOnly(sl.end_at)}${sl.location?` (${sl.location})`:''}`).join('\n'):'Please check the portal for the latest available slots.';
     const subject=`FYP Supervision Meeting - ${cohort?.label||'Current Cohort'}`;
     const body=`Dear all,\n\nI hope you are well. For reference, your assigned FYP projects are:\n\n${projectLines}\n\nMy current supervision availability is:\n${slotLines}\n\nPlease log in to the FYP Supervision Portal and book ONE available meeting slot. Slots are first-come, first-served and a booked slot will no longer be available to the other students.\n\nPortal: ${portalUrl}\n\nBefore the meeting, please update your FYP progress and upload the relevant evidence for the work completed.\n\nThank you.`;
     const url=`mailto:?bcc=${encodeURIComponent(emails.join(','))}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
@@ -245,8 +247,19 @@
 
   function openStudentModal(){if(!state.cohorts.length)return alert('Create an academic year first.');const m=modal(`<h2>Add FYP Student</h2><form id="studentForm" class="form-grid"><div class="field"><label>Full name</label><input id="sName" required></div><div class="field"><label>Email used for login</label><input id="sEmail" type="email" required></div><div class="field"><label>Student ID</label><input id="sNo"></div><div class="field"><label>Academic year</label><select id="sYear">${state.cohorts.map(c=>`<option value="${c.id}">${esc(c.label)}</option>`).join('')}</select></div><div class="field full"><label>FYP project title</label><input id="pTitle" required></div><div class="field full"><label>Project description / objectives</label><textarea id="pDesc"></textarea></div><div class="actions field full">${closeBtn()}<button class="btn">Add Student</button></div></form>`);m.querySelector('[data-close]').onclick=()=>m.remove();m.querySelector('#studentForm').onsubmit=async e=>{e.preventDefault();const payload={full_name:m.querySelector('#sName').value.trim(),email:m.querySelector('#sEmail').value.trim(),student_no:m.querySelector('#sNo').value.trim(),academic_year_id:m.querySelector('#sYear').value};const {data:stu,error}=await sb.from('students').insert(payload).select().single();if(error)return alert(error.message);const {error:pe}=await sb.from('projects').insert({student_id:stu.id,title:m.querySelector('#pTitle').value.trim(),description:m.querySelector('#pDesc').value.trim(),semester:1});if(pe)return alert(pe.message);m.remove();await loadData();render();};}
 
-  function toLocalInput(value){if(!value)return '';const d=new Date(value);const pad=n=>String(n).padStart(2,'0');return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;}
-  function localInputToIso(value){return value ? new Date(value).toISOString() : null;}
+  function toLocalInput(value){
+    if(!value)return '';
+    const parts=new Intl.DateTimeFormat('en-CA',{timeZone:BRUNEI_TZ,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date(value));
+    const g=t=>parts.find(x=>x.type===t)?.value||'';
+    return `${g('year')}-${g('month')}-${g('day')}T${g('hour')}:${g('minute')}`;
+  }
+  function localInputToIso(value){
+    if(!value)return null;
+    const m=value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+    if(!m)return null;
+    const [,y,mo,d,h,mi]=m;
+    return new Date(Date.UTC(+y,+mo-1,+d,+h-8,+mi,0,0)).toISOString();
+  }
 
   function openTaskModal(taskId=null,duplicate=false){
     if(!state.students.length)return alert('Add students first.');
