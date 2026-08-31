@@ -69,7 +69,7 @@
     return `<div class="nav">${items.map(([v,l])=>`<button data-view="${v}" class="${state.view===v?'active':''}">${l}</button>`).join('')}</div>`;
   }
   function render(){
-    app.innerHTML = `<div class="shell"><aside class="sidebar"><div class="brand">FYP Portal<small>Supervision Management System</small></div>${nav()}<div class="account"><div>${esc(state.profile?.full_name||state.user.email)}</div><div class="tiny">${esc(roleLabel())}</div><div class="version-badge">Portal v6.6</div><button id="signout" class="btn secondary small" style="margin-top:10px">Sign out</button></div></aside><main class="main"><div id="view"></div></main></div>`;
+    app.innerHTML = `<div class="shell"><aside class="sidebar"><div class="brand">FYP Portal<small>Supervision Management System</small></div>${nav()}<div class="account"><div>${esc(state.profile?.full_name||state.user.email)}</div><div class="tiny">${esc(roleLabel())}</div><div class="version-badge">Portal v6.7</div><button id="signout" class="btn secondary small" style="margin-top:10px">Sign out</button></div></aside><main class="main"><div id="view"></div></main></div>`;
     document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{state.view=b.dataset.view;render();});
     q('#signout').onclick=async()=>{await sb.auth.signOut();state.user=null;renderAuth();};
     const target=q('#view');
@@ -158,7 +158,7 @@
 
   function meetingsView(){
     if(isAdmin()){
-      const rows=state.meetingSlots.map(slot=>{const b=bookingForSlot(slot.id),stu=b?state.students.find(s=>s.id===b.student_id):null,[lab,cl]=meetingStatus(slot),rec=b?meetingRecordForBooking(b.id):null,openF=b?followupsForBooking(b.id).filter(f=>f.status!=='done').length:0;return `<tr><td>${fmt(slot.start_at)}</td><td>${fmt(slot.end_at)}</td><td>${esc(slot.location||'')}</td><td><span class="pill ${cl}">${lab}</span><button class="inline-edit editMeetingSlot" data-slot="${slot.id}" title="Edit this meeting slot">✎ Edit</button></td><td>${b?`${esc(stu?.full_name||'')}<div class="tiny muted">${esc(projectForStudent(stu?.id)?.title||'')}</div>`:'—'}</td><td><div class="meeting-actions"><button class="btn secondary small editMeetingSlot" data-slot="${slot.id}">Edit</button>${!b?`<button class="btn ghost small deleteMeetingSlot" data-slot="${slot.id}">Delete</button>`:''}${b?`<button class="btn ${rec?'secondary':''} small recordMeeting" data-booking="${b.id}">${rec?'View / Update Notes':'Record Meeting'}</button>${openF?`<div class="tiny muted" style="margin-top:6px">${openF} follow-up${openF===1?'':'s'} open</div>`:''}`:''}</div></td></tr>`}).join('');
+      const rows=state.meetingSlots.map(slot=>{const b=bookingForSlot(slot.id),stu=b?state.students.find(s=>s.id===b.student_id):null,[lab,cl]=meetingStatus(slot),rec=b?meetingRecordForBooking(b.id):null,openF=b?followupsForBooking(b.id).filter(f=>f.status!=='done').length:0;return `<tr><td>${fmt(slot.start_at)}</td><td>${fmt(slot.end_at)}</td><td>${esc(slot.location||'')}</td><td><span class="pill ${cl}">${lab}</span><button class="inline-edit editMeetingSlot" data-slot="${slot.id}" title="Edit this meeting slot">✎ Edit</button></td><td>${b?`${esc(stu?.full_name||'')}<div class="tiny muted">${esc(projectForStudent(stu?.id)?.title||'')}</div>`:'—'}</td><td><div class="meeting-actions"><button class="btn secondary small editMeetingSlot" data-slot="${slot.id}">Edit</button><button class="btn danger small deleteMeetingSlot" data-slot="${slot.id}">Delete</button>${b?`<button class="btn ${rec?'secondary':''} small recordMeeting" data-booking="${b.id}">${rec?'View / Update Notes':'Record Meeting'}</button>${openF?`<div class="tiny muted" style="margin-top:6px">${openF} follow-up${openF===1?'':'s'} open</div>`:''}`:''}</div></td></tr>`}).join('');
       return top('FYP Supervision Meetings','Set availability, edit meeting details, record what was discussed, and assign actions for the next supervision meeting.',`<div class="top-actions"><button class="btn secondary" id="emailStudents">Email All Students</button><button class="btn" id="newMeetingSlot">+ Add Availability</button></div>`)+
       `<div class="card"><h3 style="margin-top:0">Student & project list</h3>${studentProjectList()}</div><div class="section-title"><h2>Availability, bookings & supervision notes</h2></div><div class="table-wrap"><table class="table"><thead><tr><th>Start</th><th>End</th><th>Location / Mode</th><th>Status</th><th>Booked by</th><th>Actions</th></tr></thead><tbody>${rows||'<tr><td colspan="6" class="muted">No availability slots yet. Add the times you are free this week.</td></tr>'}</tbody></table></div>`;
     }
@@ -188,9 +188,26 @@
 
   async function deleteMeetingSlot(slotId){
     const slot=state.meetingSlots.find(s=>s.id===slotId);if(!slot)return;
-    if(bookingForSlot(slotId))return alert('This slot is already booked. Edit it instead of deleting it so the student booking is preserved.');
-    if(!confirm(`Delete the meeting slot on ${fmt(slot.start_at)}?`))return;
-    const r=await sb.from('meeting_slots').delete().eq('id',slotId);if(r.error)return alert(r.error.message);await loadData();render();
+    const booking=bookingForSlot(slotId);
+    const stu=booking?state.students.find(s=>s.id===booking.student_id):null;
+    if(booking){
+      const rec=meetingRecordForBooking(booking.id);
+      const fups=followupsForBooking(booking.id);
+      const details=[
+        `Meeting: ${fmt(slot.start_at)} – ${fmt(slot.end_at)}`,
+        `Booked by: ${stu?.full_name||'Student'}`,
+        rec?'Supervision record: will be deleted':'Supervision record: none',
+        `Follow-up actions: ${fups.length} will be deleted`
+      ].join('\n');
+      if(!confirm(`This meeting has already been booked.\n\n${details}\n\nDeleting the meeting will cancel the student's booking and permanently remove any linked supervision record and follow-up actions. Continue?`))return;
+      const typed=prompt(`For safety, type DELETE MEETING to permanently delete this booked meeting for ${stu?.full_name||'the student'}.`);
+      if(typed!=='DELETE MEETING')return alert('Meeting deletion cancelled.');
+    }else{
+      if(!confirm(`Delete the available meeting slot on ${fmt(slot.start_at)}?`))return;
+    }
+    const r=await sb.from('meeting_slots').delete().eq('id',slotId);
+    if(r.error)return alert(r.error.message);
+    await loadData();render();
   }
 
   async function deleteStudent(studentId){
