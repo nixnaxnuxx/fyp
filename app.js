@@ -69,7 +69,7 @@
     return `<div class="nav">${items.map(([v,l])=>`<button data-view="${v}" class="${state.view===v?'active':''}">${l}</button>`).join('')}</div>`;
   }
   function render(){
-    app.innerHTML = `<div class="shell"><aside class="sidebar"><div class="brand">FYP Portal<small>Supervision Management System</small></div>${nav()}<div class="account"><div>${esc(state.profile?.full_name||state.user.email)}</div><div class="tiny">${esc(roleLabel())}</div><div class="version-badge">Portal v6.5</div><button id="signout" class="btn secondary small" style="margin-top:10px">Sign out</button></div></aside><main class="main"><div id="view"></div></main></div>`;
+    app.innerHTML = `<div class="shell"><aside class="sidebar"><div class="brand">FYP Portal<small>Supervision Management System</small></div>${nav()}<div class="account"><div>${esc(state.profile?.full_name||state.user.email)}</div><div class="tiny">${esc(roleLabel())}</div><div class="version-badge">Portal v6.6</div><button id="signout" class="btn secondary small" style="margin-top:10px">Sign out</button></div></aside><main class="main"><div id="view"></div></main></div>`;
     document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{state.view=b.dataset.view;render();});
     q('#signout').onclick=async()=>{await sb.auth.signOut();state.user=null;renderAuth();};
     const target=q('#view');
@@ -119,9 +119,35 @@
   function studentsView(){return top('Students','Add students now and continue adding new cohorts in future years.',`<button class="btn" id="newStudent">+ Add Student</button>`)+studentOverviewTable(true);}
 
   function tasksSupervisor(){
-    return top('Tasks','Create your own FYP tasks, assign them to selected students, and edit or reuse them anytime.',`<button class="btn" id="newTask">+ New Task</button>`)+`<div class="grid cols-2">${state.tasks.map(t=>{const ass=state.assignments.filter(a=>a.task_id===t.id);const priority=t.priority||'normal';return `<div class="card task-admin-card"><div class="task-card"><div><div class="task-title-row"><h3>${esc(t.title)}</h3><span class="pill priority-${esc(priority)}">${esc(priority.charAt(0).toUpperCase()+priority.slice(1))}</span></div><p>${esc(t.instructions||'')}</p>${t.expected_output?`<div class="task-output"><b>Expected output:</b> ${esc(t.expected_output)}</div>`:''}<div class="task-meta"><span class="pill accent">${esc(t.stage||'General')}</span><span class="pill">Semester ${esc(t.semester||1)}</span><span class="pill">Due ${fmt(t.due_at)}</span><span class="pill">${ass.length} student${ass.length===1?'':'s'}</span></div></div></div><div class="task-actions"><button class="btn secondary small reviewTask" data-task="${t.id}">Review</button><button class="btn secondary small editTask" data-task="${t.id}">Edit</button><button class="btn ghost small duplicateTask" data-task="${t.id}">Duplicate</button></div></div>`}).join('')||'<div class="empty">No tasks created yet. Click + New Task and enter the work you want your students to complete.</div>'}</div>`;
+    return top('Tasks','Create your own FYP tasks, assign them to selected students, and edit or reuse them anytime.',`<button class="btn" id="newTask">+ New Task</button>`)+`<div class="grid cols-2">${state.tasks.map(t=>{const ass=state.assignments.filter(a=>a.task_id===t.id);const priority=t.priority||'normal';return `<div class="card task-admin-card"><div class="task-card"><div><div class="task-title-row"><h3>${esc(t.title)}</h3><span class="pill priority-${esc(priority)}">${esc(priority.charAt(0).toUpperCase()+priority.slice(1))}</span></div><p>${esc(t.instructions||'')}</p>${t.expected_output?`<div class="task-output"><b>Expected output:</b> ${esc(t.expected_output)}</div>`:''}<div class="task-meta"><span class="pill accent">${esc(t.stage||'General')}</span><span class="pill">Semester ${esc(t.semester||1)}</span><span class="pill">Due ${fmt(t.due_at)}</span><span class="pill">${ass.length} student${ass.length===1?'':'s'}</span></div></div></div><div class="task-actions"><button class="btn secondary small reviewTask" data-task="${t.id}">Review</button><button class="btn secondary small editTask" data-task="${t.id}">Edit</button><button class="btn ghost small duplicateTask" data-task="${t.id}">Duplicate</button><button class="btn danger small deleteTask" data-task="${t.id}">Delete</button></div></div>`}).join('')||'<div class="empty">No tasks created yet. Click + New Task and enter the work you want your students to complete.</div>'}</div>`;
   }
   function tasksStudent(){const s=state.studentRecord;if(!s)return top('My Tasks','Student record not linked.');const tasks=state.assignments.filter(a=>a.student_id===s.id).map(a=>state.tasks.find(t=>t.id===a.task_id)).filter(Boolean);return top('My Tasks','Complete each task and attach evidence before the deadline.')+`<div class="grid cols-2">${tasks.map(t=>taskCard(t,s.id,true)).join('')||'<div class="empty">No tasks assigned.</div>'}</div>`;}
+
+  async function deleteTask(taskId){
+    const task=state.tasks.find(t=>t.id===taskId);if(!task)return;
+    const assigned=state.assignments.filter(a=>a.task_id===taskId).length;
+    const subs=state.submissions.filter(s=>s.task_id===taskId);
+    const msg=`Delete task "${task.title}"?\n\nThis will remove the task from ${assigned} assigned student${assigned===1?'':'s'} and delete ${subs.length} linked submission record${subs.length===1?'':'s'}, feedback, and submission metadata. This cannot be undone.`;
+    if(!confirm(msg))return;
+    const typed=prompt('Type DELETE TASK to confirm permanent deletion:');
+    if(typed!=='DELETE TASK')return alert('Task deletion cancelled.');
+
+    // Remove uploaded evidence objects first so task deletion does not leave orphaned files in Storage.
+    const subIds=subs.map(x=>x.id);
+    if(subIds.length){
+      const {data:fileRows,error:fileErr}=await sb.from('submission_files').select('storage_path').in('submission_id',subIds);
+      if(fileErr)return alert('Could not check evidence files: '+fileErr.message);
+      const paths=(fileRows||[]).map(f=>f.storage_path).filter(Boolean);
+      if(paths.length){
+        const rm=await sb.storage.from(cfg.evidenceBucket||'fyp-evidence').remove(paths);
+        if(rm.error)return alert('Could not remove task evidence files: '+rm.error.message);
+      }
+    }
+
+    const r=await sb.from('tasks').delete().eq('id',taskId);
+    if(r.error)return alert(r.error.message);
+    await loadData();render();
+  }
 
 
   function bookingForSlot(slotId){return state.meetingBookings.find(b=>b.slot_id===slotId);}
@@ -235,6 +261,7 @@
     document.querySelectorAll('.reviewTask').forEach(b=>b.onclick=()=>openTaskReviewModal(b.dataset.task));
     document.querySelectorAll('.editTask').forEach(b=>b.onclick=()=>openTaskModal(b.dataset.task,false));
     document.querySelectorAll('.duplicateTask').forEach(b=>b.onclick=()=>openTaskModal(b.dataset.task,true));
+    document.querySelectorAll('.deleteTask').forEach(b=>b.onclick=()=>deleteTask(b.dataset.task));
     document.querySelectorAll('.openSubmission').forEach(b=>b.onclick=()=>openSubmissionModal(b.dataset.id));
     document.querySelectorAll('.bookMeeting').forEach(b=>b.onclick=()=>bookMeeting(b.dataset.slot)); document.querySelectorAll('.recordMeeting').forEach(b=>b.onclick=()=>openMeetingRecordModal(b.dataset.booking));
     const de=q('#doExport');if(de)de.onclick=runExport;
