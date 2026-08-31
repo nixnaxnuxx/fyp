@@ -14,6 +14,3 @@ a{color:var(--accent)}
 @media(max-width:950px){.shell{grid-template-columns:1fr}.sidebar{position:relative;height:auto}.nav{display:flex;overflow:auto;gap:4px}.nav button{white-space:nowrap;width:auto}.grid.cols-4,.grid.cols-3{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:620px){.main{padding:16px}.grid.cols-4,.grid.cols-3,.grid.cols-2,.form-grid{grid-template-columns:1fr}.topbar{flex-direction:column}.field.full{grid-column:auto}.modal{padding:16px}.kpi .value{font-size:24px}}
 @media print{.sidebar,.topbar .btn,.no-print,.actions{display:none!important}.shell{display:block}.main{padding:0}.card,.table-wrap{box-shadow:none;break-inside:avoid}.print-title{display:block!important}}
-.top-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
-.project-list{display:flex;flex-direction:column;gap:0}.project-person{display:grid;grid-template-columns:minmax(180px,.7fr) minmax(0,1.3fr);gap:18px;padding:12px 0;border-bottom:1px solid var(--line)}.project-person:last-child{border-bottom:0}
-@media(max-width:620px){.project-person{grid-template-columns:1fr;gap:5px}.top-actions{width:100%;justify-content:flex-start}}

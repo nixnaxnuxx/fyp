@@ -6,7 +6,7 @@ create extension if not exists pgcrypto;
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   full_name text,
-  role text not null default 'student' check (role in ('admin','student')),
+  role text not null default 'student' check (role in ('supervisor','student')),
   created_at timestamptz not null default now()
 );
 
@@ -128,7 +128,7 @@ for each row execute procedure public.handle_new_user();
 
 create or replace function public.is_supervisor()
 returns boolean language sql stable security definer set search_path=public as $$
-  select exists(select 1 from public.profiles p where p.id=auth.uid() and p.role='admin');
+  select exists(select 1 from public.profiles p where p.id=auth.uid() and p.role='supervisor');
 $$;
 
 create or replace function public.current_student_id()
@@ -199,35 +199,4 @@ create policy "evidence delete own folder or supervisor" on storage.objects for 
 );
 
 -- IMPORTANT: After you create YOUR account, promote it once in SQL Editor:
--- update public.profiles set role='admin' where id=(select id from auth.users where email='YOUR_EMAIL');
-
-
--- Meeting booking feature
-
-create table if not exists public.meeting_slots (
-  id uuid primary key default gen_random_uuid(),
-  start_at timestamptz not null,
-  end_at timestamptz not null,
-  location text,
-  note text,
-  created_by uuid references public.profiles(id),
-  created_at timestamptz not null default now(),
-  check (end_at > start_at)
-);
-
-create table if not exists public.meeting_bookings (
-  id uuid primary key default gen_random_uuid(),
-  slot_id uuid not null unique references public.meeting_slots(id) on delete cascade,
-  student_id uuid not null references public.students(id) on delete cascade,
-  booked_at timestamptz not null default now(),
-  status text not null default 'booked' check (status in ('booked','cancelled','completed'))
-);
-
-alter table public.meeting_slots enable row level security;
-alter table public.meeting_bookings enable row level security;
-
-create policy "meeting slots authenticated read" on public.meeting_slots for select to authenticated using (true);
-create policy "meeting slots supervisor write" on public.meeting_slots for all to authenticated using (public.is_supervisor()) with check (public.is_supervisor());
-create policy "meeting bookings own or supervisor read" on public.meeting_bookings for select to authenticated using (public.is_supervisor() or student_id=public.current_student_id());
-create policy "students book own meeting" on public.meeting_bookings for insert to authenticated with check (student_id=public.current_student_id());
-create policy "meeting bookings supervisor write" on public.meeting_bookings for update to authenticated using (public.is_supervisor()) with check (public.is_supervisor());
+-- update public.profiles set role='supervisor' where id=(select id from auth.users where email='YOUR_EMAIL');
