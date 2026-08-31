@@ -67,7 +67,7 @@
     return `<div class="nav">${items.map(([v,l])=>`<button data-view="${v}" class="${state.view===v?'active':''}">${l}</button>`).join('')}</div>`;
   }
   function render(){
-    app.innerHTML = `<div class="shell"><aside class="sidebar"><div class="brand">FYP Portal<small>Supervision Management System</small></div>${nav()}<div class="account"><div>${esc(state.profile?.full_name||state.user.email)}</div><div class="tiny">${esc(roleLabel())}</div><div class="version-badge">Portal v6.2</div><button id="signout" class="btn secondary small" style="margin-top:10px">Sign out</button></div></aside><main class="main"><div id="view"></div></main></div>`;
+    app.innerHTML = `<div class="shell"><aside class="sidebar"><div class="brand">FYP Portal<small>Supervision Management System</small></div>${nav()}<div class="account"><div>${esc(state.profile?.full_name||state.user.email)}</div><div class="tiny">${esc(roleLabel())}</div><div class="version-badge">Portal v6.3</div><button id="signout" class="btn secondary small" style="margin-top:10px">Sign out</button></div></aside><main class="main"><div id="view"></div></main></div>`;
     document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{state.view=b.dataset.view;render();});
     q('#signout').onclick=async()=>{await sb.auth.signOut();state.user=null;renderAuth();};
     const target=q('#view');
@@ -97,9 +97,9 @@
       studentOverviewTable();
   }
 
-  function studentOverviewTable(){
+  function studentOverviewTable(showActions=false){
     if(!state.students.length)return `<div class="empty">No students yet.</div>`;
-    return `<div class="table-wrap"><table class="table"><thead><tr><th>Student</th><th>Project</th><th>Cohort</th><th>Tasks</th><th>Progress</th><th>Status</th></tr></thead><tbody>${state.students.map(s=>{const p=projectForStudent(s.id);const assigns=state.assignments.filter(a=>a.student_id===s.id);const app=assigns.filter(a=>{const sub=latestSubmission(a.task_id,s.id);return sub?.status==='approved'}).length;const pct=assigns.length?Math.round(app/assigns.length*100):0;const hasOverdue=assigns.some(a=>{const t=state.tasks.find(x=>x.id===a.task_id);return t&&!latestSubmission(t.id,s.id)&&t.due_at&&new Date(t.due_at)<now()});return `<tr><td><b>${esc(s.full_name)}</b><div class="tiny muted">${esc(s.email||'')}</div></td><td>${esc(p?.title||'—')}</td><td>${esc(state.cohorts.find(c=>c.id===s.academic_year_id)?.label||'—')}</td><td>${app}/${assigns.length} approved</td><td><div class="progress"><span style="width:${pct}%"></span></div><div class="tiny muted">${pct}%</div></td><td><span class="pill ${hasOverdue?'bad':'ok'}">${hasOverdue?'Needs attention':'On track'}</span></td></tr>`}).join('')}</tbody></table></div>`;
+    return `<div class="table-wrap"><table class="table"><thead><tr><th>Student</th><th>Project</th><th>Cohort</th><th>Tasks</th><th>Progress</th><th>Status</th>${showActions?'<th>Actions</th>':''}</tr></thead><tbody>${state.students.map(s=>{const p=projectForStudent(s.id);const assigns=state.assignments.filter(a=>a.student_id===s.id);const app=assigns.filter(a=>{const sub=latestSubmission(a.task_id,s.id);return sub?.status==='approved'}).length;const pct=assigns.length?Math.round(app/assigns.length*100):0;const hasOverdue=assigns.some(a=>{const t=state.tasks.find(x=>x.id===a.task_id);return t&&!latestSubmission(t.id,s.id)&&t.due_at&&new Date(t.due_at)<now()});return `<tr><td><b>${esc(s.full_name)}</b><div class="tiny muted">${esc(s.email||'')}</div></td><td>${esc(p?.title||'—')}</td><td>${esc(state.cohorts.find(c=>c.id===s.academic_year_id)?.label||'—')}</td><td>${app}/${assigns.length} approved</td><td><div class="progress"><span style="width:${pct}%"></span></div><div class="tiny muted">${pct}%</div></td><td><span class="pill ${hasOverdue?'bad':'ok'}">${hasOverdue?'Needs attention':'On track'}</span></td>${showActions?`<td><button class="btn danger small deleteStudent" data-student="${s.id}">Delete</button></td>`:''}</tr>`}).join('')}</tbody></table></div>`;
   }
 
   function studentDashboard(){
@@ -114,7 +114,7 @@
 
   function taskCard(t,studentId,studentMode=false){const [label,cls]=assignmentStatus(t,studentId);const sub=latestSubmission(t.id,studentId);return `<div class="card task-card"><div><h3>${esc(t.title)}</h3><p>${esc((t.instructions||'').slice(0,180))}</p><div class="task-meta"><span class="pill accent">${esc(t.stage||'General')}</span><span class="pill">Due ${fmt(t.due_at)}</span><span class="pill ${cls}">${label}</span></div></div>${studentMode?`<button class="btn small openTask" data-task="${t.id}" data-student="${studentId}">${sub?'View / Revise':'Open'}</button>`:''}</div>`;}
 
-  function studentsView(){return top('Students','Add students now and continue adding new cohorts in future years.',`<button class="btn" id="newStudent">+ Add Student</button>`)+studentOverviewTable();}
+  function studentsView(){return top('Students','Add students now and continue adding new cohorts in future years.',`<button class="btn" id="newStudent">+ Add Student</button>`)+studentOverviewTable(true);}
 
   function tasksSupervisor(){
     return top('Tasks','Create your own FYP tasks, assign them to selected students, and edit or reuse them anytime.',`<button class="btn" id="newTask">+ New Task</button>`)+`<div class="grid cols-2">${state.tasks.map(t=>{const ass=state.assignments.filter(a=>a.task_id===t.id);const priority=t.priority||'normal';return `<div class="card task-admin-card"><div class="task-card"><div><div class="task-title-row"><h3>${esc(t.title)}</h3><span class="pill priority-${esc(priority)}">${esc(priority.charAt(0).toUpperCase()+priority.slice(1))}</span></div><p>${esc(t.instructions||'')}</p>${t.expected_output?`<div class="task-output"><b>Expected output:</b> ${esc(t.expected_output)}</div>`:''}<div class="task-meta"><span class="pill accent">${esc(t.stage||'General')}</span><span class="pill">Semester ${esc(t.semester||1)}</span><span class="pill">Due ${fmt(t.due_at)}</span><span class="pill">${ass.length} student${ass.length===1?'':'s'}</span></div></div></div><div class="task-actions"><button class="btn secondary small reviewTask" data-task="${t.id}">Review</button><button class="btn secondary small editTask" data-task="${t.id}">Edit</button><button class="btn ghost small duplicateTask" data-task="${t.id}">Duplicate</button></div></div>`}).join('')||'<div class="empty">No tasks created yet. Click + New Task and enter the work you want your students to complete.</div>'}</div>`;
@@ -163,6 +163,19 @@
     if(bookingForSlot(slotId))return alert('This slot is already booked. Edit it instead of deleting it so the student booking is preserved.');
     if(!confirm(`Delete the meeting slot on ${fmt(slot.start_at)}?`))return;
     const r=await sb.from('meeting_slots').delete().eq('id',slotId);if(r.error)return alert(r.error.message);await loadData();render();
+  }
+
+  async function deleteStudent(studentId){
+    const stu=state.students.find(s=>s.id===studentId);if(!stu)return;
+    const project=projectForStudent(studentId);
+    const first=confirm(`Delete ${stu.full_name} from the FYP portal?\n\nThis permanently removes the student's linked project, task assignments, submissions, meeting bookings, supervision records and follow-up actions. Shared task definitions remain.`);
+    if(!first)return;
+    const typed=prompt(`For safety, type DELETE to permanently remove ${stu.full_name}.`);
+    if(typed!=='DELETE')return alert('Deletion cancelled.');
+    const r=await sb.from('students').delete().eq('id',studentId);
+    if(r.error)return alert('Could not delete student: '+r.error.message);
+    alert(`${stu.full_name} has been removed from the portal.${project?' Their linked project and supervision records were removed as well.':''}\n\nIf they previously created a login account, the Supabase Auth login itself is not deleted by this portal.`);
+    await loadData();render();
   }
 
   function openMeetingRecordModal(bookingId){
@@ -215,6 +228,7 @@
     const ns=q('#newStudent');if(ns)ns.onclick=openStudentModal; const nt=q('#newTask');if(nt)nt.onclick=openTaskModal; const nc=q('#newCohort');if(nc)nc.onclick=openCohortModal; const ms=q('#newMeetingSlot');if(ms)ms.onclick=()=>openMeetingSlotModal(); const em=q('#emailStudents');if(em)em.onclick=emailAllStudents;
     document.querySelectorAll('.editMeetingSlot').forEach(b=>b.onclick=()=>openMeetingSlotModal(b.dataset.slot));
     document.querySelectorAll('.deleteMeetingSlot').forEach(b=>b.onclick=()=>deleteMeetingSlot(b.dataset.slot));
+    document.querySelectorAll('.deleteStudent').forEach(b=>b.onclick=()=>deleteStudent(b.dataset.student));
     document.querySelectorAll('.openTask').forEach(b=>b.onclick=()=>openTaskSubmitModal(b.dataset.task,b.dataset.student));
     document.querySelectorAll('.reviewTask').forEach(b=>b.onclick=()=>openTaskReviewModal(b.dataset.task));
     document.querySelectorAll('.editTask').forEach(b=>b.onclick=()=>openTaskModal(b.dataset.task,false));
